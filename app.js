@@ -196,21 +196,21 @@ function renderMentorDashboard() {
       h('div', { class: 'spacer' }),
       h('button', { class: 'btn primary' }, 'Open')
     ]),
+    h('div', { class: 'card home-card', onclick: () => navigate('mentor-assignments') }, [
+      h('h2', {}, 'Assignments'),
+      h('div', { class: 'muted' }, 'View assignments (read-only)'),
+      h('div', { class: 'spacer' }),
+      h('button', { class: 'btn primary' }, 'Open')
+    ]),
     h('div', { class: 'card home-card', onclick: () => navigate('mentor-submissions') }, [
-      h('h2', {}, 'View Submissions'),
-      h('div', { class: 'muted' }, 'Review student submissions'),
+      h('h2', {}, 'All Submissions'),
+      h('div', { class: 'muted' }, 'Review all student submissions (Challenges & Assignments)'),
       h('div', { class: 'spacer' }),
       h('button', { class: 'btn primary' }, 'Open')
     ]),
     h('div', { class: 'card home-card', onclick: () => navigate('mentor-credits') }, [
       h('h2', {}, 'Give Credits'),
       h('div', { class: 'muted' }, 'Give mentor-specific credits'),
-      h('div', { class: 'spacer' }),
-      h('button', { class: 'btn primary' }, 'Open')
-    ]),
-    h('div', { class: 'card home-card', onclick: () => navigate('mentor-assignments') }, [
-      h('h2', {}, 'Assignments'),
-      h('div', { class: 'muted' }, 'Classroom-like assignments'),
       h('div', { class: 'spacer' }),
       h('button', { class: 'btn primary' }, 'Open')
     ]),
@@ -777,10 +777,19 @@ function renderGiveCredits() {
       // Update user's credit balance
       if (userToUpdate.role === 'student') {
         state.credits.student.balance += credits;
+        // Update user's individual balance
+        if (!userToUpdate.credits) userToUpdate.credits = 0;
+        userToUpdate.credits += credits;
       } else if (userToUpdate.role === 'mentor') {
         state.credits.mentor.balance += credits;
+        // Update user's individual balance
+        if (!userToUpdate.credits) userToUpdate.credits = 0;
+        userToUpdate.credits += credits;
       }
       state.credits.admin.totalGranted += credits;
+      
+      // Save updated users
+      localStorage.setItem('users', JSON.stringify(state.mock.users));
 
       // Add to credit history
       const creditHistory = JSON.parse(localStorage.getItem('creditHistory')) || [];
@@ -803,7 +812,10 @@ function renderGiveCredits() {
         h('h2', {}, 'สำเร็จ'),
         h('p', {}, `มอบเครดิตจำนวน ${credits} ให้กับ ${userToUpdate.name} เรียบร้อยแล้ว`),
         h('div', { class: 'spacer' }),
-        h('button', { class: 'btn primary', onclick: hideModal }, 'ตกลง')
+        h('button', { class: 'btn primary', onclick: () => {
+          hideModal();
+          renderGiveCredits();
+        }}, 'ตกลง')
       ]));
     }
   };
@@ -1462,7 +1474,8 @@ function renderStudentCredits() {
   }
   
   const actions = [h('button', { class: 'btn ghost', onclick: () => navigate('home') }, 'Back')];
-  const balance = state.credits.student.balance;
+  // Use individual user balance if available, otherwise fall back to global balance
+  const balance = state.user.credits || state.credits.student.balance;
   
   // Mock data for member credits
   const memberCredits = [
@@ -1511,8 +1524,10 @@ function renderStudentCredits() {
       h('div', { class: 'row right' }, [
         h('button', { class: 'btn ghost', onclick: hideModal }, 'Cancel'),
         h('button', { class: 'btn primary', onclick: () => {
-          // Deduct credits
+          // Deduct credits from both global and individual balance
           state.credits.student.balance -= selectedTicket.cost;
+          if (!state.user.credits) state.user.credits = 0;
+          state.user.credits -= selectedTicket.cost;
           
           // Add to credit history
           const creditHistory = JSON.parse(localStorage.getItem('creditHistory')) || [];
@@ -1528,8 +1543,9 @@ function renderStudentCredits() {
           });
           localStorage.setItem('creditHistory', JSON.stringify(creditHistory));
           
-          // Save credits
+          // Save credits and users
           localStorage.setItem('credits', JSON.stringify(state.credits));
+          localStorage.setItem('users', JSON.stringify(state.mock.users));
           
           alert('Redeemed successfully!');
           hideModal();
@@ -1701,12 +1717,15 @@ function renderMentorSubmissions() {
     h('td', {}, s.by), 
     h('td', {}, s.at),
     h('td', {}, h('span', { class: `pill ${s.status === 'Submitted' ? 'ok' : s.status === 'Graded' ? 'info' : 'warn'}` }, s.status || 'Pending')),
-    h('td', {}, h('button', { class: 'btn', onclick: () => navigate(`mentor-submission/${s.id}`) }, 'Open'))
+    h('td', {}, h('div', { class: 'row', style: 'gap: 8px;' }, [
+      h('button', { class: 'btn', onclick: () => navigate(`mentor-submission/${s.id}`) }, 'View'),
+      h('button', { class: 'btn primary', onclick: () => navigate(`mentor-grade-submission/${s.id}`) }, 'Grade')
+    ]))
   ])));
   
   const table = h('table', { class: 'table' }, [
     h('thead', {}, h('tr', {}, [
-      h('th', {}, 'Team'), h('th', {}, 'Challenge/Assignment'), h('th', {}, 'By'), h('th', {}, 'Submitted At'), h('th', {}, 'Status'), h('th', {}, '')
+      h('th', {}, 'Team'), h('th', {}, 'Challenge/Assignment'), h('th', {}, 'By'), h('th', {}, 'Submitted At'), h('th', {}, 'Status'), h('th', {}, 'Actions')
     ])),
     tableBody
   ]);
@@ -1720,14 +1739,17 @@ function renderMentorSubmissions() {
         h('td', {}, s.by), 
         h('td', {}, s.at),
         h('td', {}, h('span', { class: `pill ${s.status === 'Submitted' ? 'ok' : s.status === 'Graded' ? 'info' : 'warn'}` }, s.status || 'Pending')),
-        h('td', {}, h('button', { class: 'btn', onclick: () => navigate(`mentor-submission/${s.id}`) }, 'Open'))
+        h('td', {}, h('div', { class: 'row', style: 'gap: 8px;' }, [
+          h('button', { class: 'btn', onclick: () => navigate(`mentor-submission/${s.id}`) }, 'View'),
+          h('button', { class: 'btn primary', onclick: () => navigate(`mentor-grade-submission/${s.id}`) }, 'Grade')
+        ]))
       ])));
     }}, 'View All')
   ]) : null;
   
   const content = h('div', {}, [
     h('h2', {}, 'Submissions'),
-    h('div', { class: 'muted' }, `Submissions from ${mentorTeam}`),
+    h('div', { class: 'muted' }, `All submissions from ${mentorTeam} (Challenges & Assignments)`),
     h('div', { class: 'spacer' }),
     table,
     viewAll
@@ -1763,10 +1785,45 @@ function renderMentorCredits() {
   const amountInput = h('input', { class: 'input', placeholder: 'Amount', type: 'number', min: '0', value: '5' });
   const reasonInput = h('textarea', { class: 'input', placeholder: 'Add reason...', rows: 3 });
   
+  // File upload for evidence
+  const fileInput = h('input', { 
+    type: 'file', 
+    multiple: true, 
+    id: 'evidence-upload',
+    class: 'input',
+    style: 'display: none;'
+  });
+  
+  const fileDisplay = h('div', { 
+    class: 'file-display',
+    style: 'padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elevated); min-height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer;',
+    onclick: () => document.getElementById('evidence-upload').click()
+  }, [
+    h('div', { style: 'text-align: center;' }, [
+      h('div', { style: 'font-size: 24px; margin-bottom: 8px;' }, '📎'),
+      h('div', { class: 'muted' }, 'Click to attach evidence files')
+    ])
+  ]);
+  
+  // Update file display when files are selected
+  fileInput.onchange = (e) => {
+    const fileDisplay = document.querySelector('.file-display');
+    if (e.target.files.length > 0) {
+      fileDisplay.innerHTML = `
+        <div style="text-align: center;">
+          <div style="font-size: 24px; margin-bottom: 8px;">✅</div>
+          <div class="muted">${e.target.files.length} file(s) selected</div>
+        </div>
+      `;
+      fileDisplay.style.borderColor = 'var(--accent)';
+    }
+  };
+  
   const give = () => {
     const selectedUser = userSelect.value;
     const amount = parseInt(amountInput.value, 10);
     const reason = reasonInput.value;
+    const files = document.getElementById('evidence-upload').files;
     
     if (!selectedUser || !amount) {
       showModal(h('div', {}, [
@@ -1779,15 +1836,21 @@ function renderMentorCredits() {
     }
     
     const user = teamMembers.find(m => m.id === selectedUser);
+    const fileNames = files.length > 0 ? Array.from(files).map(f => f.name).join(', ') : 'No files';
+    
     showModal(h('div', {}, [
       h('h2', {}, 'Give Kudos'),
-      h('p', {}, `Give ${amount} credits to ${user?.name} (${mentorTeam})?${reason ? `\n\nReason: ${reason}` : ''}`),
+      h('p', {}, `Give ${amount} credits to ${user?.name} (${mentorTeam})?${reason ? `\n\nReason: ${reason}` : ''}${files.length > 0 ? `\n\nEvidence: ${fileNames}` : ''}`),
       h('div', { class: 'spacer' }),
       h('div', { class: 'row right' }, [
         h('button', { class: 'btn ghost', onclick: hideModal }, 'Cancel'),
         h('button', { class: 'btn primary', onclick: () => {
           // Update student's credit balance
           state.credits.student.balance += amount;
+          
+          // Update user's individual balance
+          if (!user.credits) user.credits = 0;
+          user.credits += amount;
           
           // Add to credit history
           const creditHistory = JSON.parse(localStorage.getItem('creditHistory')) || [];
@@ -1799,30 +1862,68 @@ function renderMentorCredits() {
             by: state.user.name,
             category: 'mentor',
             reason: reason,
+            evidence: files.length > 0 ? Array.from(files).map(f => ({ name: f.name, size: f.size })) : [],
             timestamp: new Date().toLocaleString()
           });
           localStorage.setItem('creditHistory', JSON.stringify(creditHistory));
           
-          // Save credits
+          // Save credits and users
           localStorage.setItem('credits', JSON.stringify(state.credits));
+          localStorage.setItem('users', JSON.stringify(state.mock.users));
           
           alert('Kudos sent successfully!');
           hideModal();
+          // Refresh the page to show updated data
+          renderMentorCredits();
         }}, 'Give')
       ])
     ]));
   };
   
-  const content = h('div', { class: 'card' }, [
-    h('h2', {}, 'Give Credits'),
-    h('div', { class: 'muted' }, `Give credits to members of ${mentorTeam}`),
-    h('div', { class: 'spacer' }),
-    h('div', { class: 'field' }, [h('label', {}, 'Team'), h('input', { class: 'input', value: mentorTeam, disabled: true })]),
-    h('div', { class: 'field' }, [h('label', {}, 'User'), userSelect]),
-    h('div', { class: 'field' }, [h('label', {}, 'Amount'), amountInput]),
-    h('div', { class: 'field' }, [h('label', {}, 'Description'), reasonInput]),
-    h('div', { class: 'spacer' }),
-    h('button', { class: 'btn ok', onclick: give }, 'Give Credits')
+  // Get team credit history
+  const creditHistory = JSON.parse(localStorage.getItem('creditHistory')) || [];
+  const teamCreditHistory = creditHistory.filter(h => 
+    teamMembers.some(member => member.id === h.userId)
+  );
+  
+  const historyTable = h('div', { style: 'max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px;' }, [
+    h('table', { class: 'table', style: 'margin: 0;' }, [
+      h('thead', {}, h('tr', {}, [
+        h('th', {}, 'User'), h('th', {}, 'Change'), h('th', {}, 'By'), h('th', {}, 'Category'), h('th', {}, 'Time')
+      ])),
+      h('tbody', {}, teamCreditHistory.length > 0 ? teamCreditHistory.map(it => h('tr', {}, [
+        h('td', {}, it.userName),
+        h('td', {}, `${it.change > 0 ? '+' : ''}${it.change} credit${Math.abs(it.change) === 1 ? '' : 's'}`),
+        h('td', {}, it.by),
+        h('td', {}, it.category),
+        h('td', {}, new Date(it.timestamp).toLocaleDateString())
+      ])) : [h('tr', {}, [h('td', { colspan: 5, style: 'text-align: center; color: var(--muted);' }, 'No credit history yet')])])
+    ])
+  ]);
+  
+  const content = h('div', { class: 'grid' }, [
+    h('div', { class: 'card' }, [
+      h('h2', {}, 'Give Credits'),
+      h('div', { class: 'muted' }, `Give credits to members of ${mentorTeam}`),
+      h('div', { class: 'spacer' }),
+      h('div', { class: 'field' }, [h('label', {}, 'Team'), h('input', { class: 'input', value: mentorTeam, disabled: true })]),
+      h('div', { class: 'field' }, [h('label', {}, 'User'), userSelect]),
+      h('div', { class: 'field' }, [h('label', {}, 'Amount'), amountInput]),
+      h('div', { class: 'field' }, [h('label', {}, 'Description'), reasonInput]),
+      h('div', { class: 'field' }, [
+        h('label', {}, 'Evidence Files (Optional)'),
+        fileDisplay,
+        fileInput
+      ]),
+      h('div', { class: 'spacer' }),
+      h('button', { class: 'btn ok', onclick: give }, 'Give Credits')
+    ]),
+    h('div', { class: 'card' }, [
+      h('h2', {}, 'Team Credit History'),
+      h('div', { class: 'muted' }, `Credit history for ${mentorTeam} members`),
+      h('div', { class: 'spacer' }),
+      historyTable
+    ])
   ]);
   
   layout('Mentor Give Credits', actions, content);
@@ -1839,28 +1940,25 @@ function renderMentorAssignments() {
   // Get mentor's team from user data
   const mentorTeam = state.user.team;
   
-  // Assignment submissions table (filtered to mentor's team only)
-  const assignmentSubmissions = state.mock.submissions.filter(s => s.assignment && s.team === mentorTeam);
-  const submissionsTable = h('table', { class: 'table', id: 'mentor-assignment-submissions-table' }, [
-    h('thead', {}, h('tr', {}, [
-      h('th', {}, 'Assignment'), h('th', {}, 'By'), h('th', {}, 'Submitted At'), h('th', {}, 'Status'), h('th', {}, '')
-    ])),
-    h('tbody', {}, assignmentSubmissions.map(s => {
-      // Find assignment by title to get the ID
-      const assignment = state.mock.assignments.find(a => a.title === s.assignment);
-      return h('tr', {}, [
-        h('td', {}, s.assignment), h('td', {}, s.by), h('td', {}, s.at),
-        h('td', {}, h('span', { class: `pill ${s.status === 'Submitted' ? 'ok' : 'warn'}` }, s.status || 'Pending')),
-        h('td', {}, h('button', { class: 'btn', onclick: () => navigate(`mentor-assignment/${assignment?.id || 'as1'}`) }, 'Open'))
-      ]);
-    }))
-  ]);
+  // Show assignments list (read-only)
+  const assignmentsList = h('div', { class: 'list' }, state.mock.assignments.map(a => {
+    const submissionCount = state.mock.submissions.filter(s => s.assignment === a.title && s.team === mentorTeam).length;
+    return h('div', { class: 'list-item' }, [
+      h('div', { class: 'ticket' }, [
+        h('div', { class: 'title' }, a.title),
+        h('div', { class: 'meta' }, `Due ${a.deadline} · ${a.credits} credits · ${submissionCount} submissions from ${mentorTeam}`)
+      ]),
+      h('div', { class: 'row' }, [
+        h('button', { class: 'btn', onclick: () => alert(`View details for ${a.title}`) }, 'View Details')
+      ])
+    ]);
+  }));
   
   const content = h('div', {}, [
-    h('h2', {}, 'Assignment Submissions'),
-    h('div', { class: 'muted' }, `Submissions from ${mentorTeam}`),
+    h('h2', {}, 'Assignments'),
+    h('div', { class: 'muted' }, 'View all available assignments (read-only)'),
     h('div', { class: 'spacer' }),
-    submissionsTable
+    assignmentsList
   ]);
   
   layout('Assignments', actions, content);
@@ -1969,18 +2067,13 @@ function renderMentorSubmission(id) {
     return;
   }
   
-  const actions = [h('button', { class: 'btn ghost', onclick: () => navigate('mentor-submissions') }, 'Back')];
+  const actions = [
+    h('button', { class: 'btn ghost', onclick: () => navigate('mentor-submissions') }, 'Back'),
+    h('button', { class: 'btn primary', onclick: () => navigate(`mentor-grade-submission/${id}`) }, 'Grade')
+  ];
   
   // Check if already graded
   const isGraded = submission.status === 'Graded' && submission.grade;
-  
-  // Rubric score options
-  const rubricOptions = [
-    { value: 'improve', label: 'ปรับปรุง', color: 'danger' },
-    { value: 'fair', label: 'พอใช้', color: 'warn' },
-    { value: 'good', label: 'ดี', color: 'ok' },
-    { value: 'excellent', label: 'ดีเยี่ยม', color: 'ok' }
-  ];
   
   // Before submission section (always shown)
   const beforeSubmissionSection = h('div', { class: 'card' }, [
@@ -1988,19 +2081,36 @@ function renderMentorSubmission(id) {
     h('div', { class: 'muted' }, `Submitted by ${submission.by} (${submission.team}) on ${submission.at}`),
     h('div', { class: 'spacer' }),
     
-    // Attached files section
+    // Attached files section with better display
     h('div', { class: 'field' }, [
       h('label', {}, 'ไฟล์แนบ (Attached Files)'),
-      h('div', { class: 'muted' }, submission.files ? submission.files.map(f => f.name).join(', ') : 'No files'),
-      h('div', { class: 'spacer' }),
-      h('div', { class: 'row', style: 'gap: 8px;' }, 
-        (submission.files || []).map(file => 
-          h('div', { 
-            class: 'file-preview', 
-            style: 'width: 60px; height: 60px; border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--bg-elevated);' 
-          }, '📄')
-        )
-      )
+      h('div', { class: 'spacer-sm' }),
+      submission.files && submission.files.length > 0 ? 
+        h('div', { class: 'file-list', style: 'display: flex; flex-direction: column; gap: 8px;' }, 
+          submission.files.map(file => 
+            h('div', { 
+              class: 'file-item',
+              style: 'padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elevated); display: flex; align-items: center; gap: 12px;'
+            }, [
+              h('span', { style: 'font-size: 20px;' }, '📄'),
+              h('div', { style: 'flex: 1;' }, [
+                h('div', { style: 'font-weight: 500;' }, file.name),
+                h('div', { class: 'muted', style: 'font-size: 12px;' }, file.size)
+              ]),
+              h('button', { 
+                class: 'btn ghost', 
+                onclick: () => showModal(h('div', {}, [
+                  h('h2', {}, 'File Preview'),
+                  h('p', {}, `File: ${file.name}`),
+                  h('p', {}, `Size: ${file.size}`),
+                  h('div', { class: 'spacer' }),
+                  h('button', { class: 'btn primary', onclick: hideModal }, 'Close')
+                ]))
+              }, 'View')
+            ])
+          )
+        ) :
+        h('div', { class: 'muted', style: 'text-align: center; padding: 20px;' }, 'No files attached')
     ])
   ]);
   
@@ -2085,7 +2195,10 @@ function renderMentorSubmission(id) {
               if (studentUser) {
                 const creditsToAward = selectedScore === 'excellent' ? 10 : selectedScore === 'good' ? 8 : selectedScore === 'fair' ? 5 : 2;
                 state.credits.student.balance += creditsToAward;
+                if (!studentUser.credits) studentUser.credits = 0;
+                studentUser.credits += creditsToAward;
                 localStorage.setItem('credits', JSON.stringify(state.credits));
+                localStorage.setItem('users', JSON.stringify(state.mock.users));
               }
               
               localStorage.setItem('submissions', JSON.stringify(state.mock.submissions));
