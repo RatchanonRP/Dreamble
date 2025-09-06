@@ -252,6 +252,13 @@ html {
   box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
 }
 
+.btn.pill.selected { 
+  outline: none; 
+  box-shadow: 0 0 0 2px #22d3ee33 inset; 
+  background: var(--accent) !important; 
+  color: white !important; 
+}
+
 .pill {
   font-size: 12px;
   padding: 4px 8px;
@@ -268,6 +275,18 @@ html {
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 24px;
   align-items: start;
+}
+
+.grid-4-col {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .grid-4-col {
+    grid-template-columns: 1fr;
+  }
 }
 
 .grid.two-columns {
